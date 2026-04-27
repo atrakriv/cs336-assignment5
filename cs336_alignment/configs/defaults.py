@@ -1,0 +1,87 @@
+from omegaconf import OmegaConf
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass
+class PathConfig:
+    train_data_file: str = "data/grpo/train.json"                         # jsonl file containing the training data
+    val_data_file: str = "data/grpo/validation.jsonl"                     # jsonl file containing the validation data
+    prompt_template_file: str = "cs336_alignment/prompts/r1_zero.prompt"  # prompt template file
+    model_path: str = "Qwen2.5-Math-1.5B"                                 # path to the qwen2.5-math-1.5b model checkpoint
+    output_dir: str = "output/grpo"                                       # directory to save the results
+
+@dataclass
+class TrainingConfig:
+    # common
+    seed: int = 1337
+    device: str = "cuda:0"
+    dtype: str = "bfloat16"                          # "float16" or "bfloat16"
+    
+    # model
+    attention_type: str = "flash_attention_2"
+    use_compile: bool = False                        # whether to use torch.compile for the model
+    
+    # AdamW optimizer
+    learning_rate: float = 1e-5
+    weight_decay: float = 0.0
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.95
+    adam_eps: float = 1e-8
+    
+    # sampling parameters
+    temperature: float = 1.0
+    top_p: float = 1.0
+    min_tokens: int = 4
+    max_tokens: int = 1024
+    stop: List[str] = field(default_factory=lambda: ["</answer>"])
+    include_stop_str_in_output: bool = True
+    
+    # GRPO parameters
+    n_grpo_steps: int = 10                              # number of GRPO steps
+    advantage_eps: float = 1e-6                         # epsilon for advantage normalization
+    rollout_batch_size: int = 256                       # number of rollouts per batch
+    group_size: int = 8                                 # size of each group
+    epochs_per_rollout_batch: int = 1                   # On-policy (off-policy if > 1)
+    train_batch_size: int = 256                         # On-policy, batch size for training the policy
+    grad_acc_steps: int = 256                           # microbatch size is 2
+    loss_type: str = "grpo_no_clip"                     # "no_baseline", "reinforce_with_baseline", "grpo_no_clip", "grpo_clip"
+    use_std_norma: bool = True                          # whether to use standard normalization for advantages
+    cliprange: float = 0.2                              # clip ratio
+    max_grad_norm: float = 1.0                          # max gradient norm
+    micro_batch_size: int = 2                           # number of samples that fit in
+    norm_mode: str = "mean"                             # loss normalization mode: "mean", "constant", or "microbatch"
+    norm_constant: float = 1024.0                       # normalization constant (used when normalize_mode = "constant")
+
+    # evaluation
+    eval_interval: int = 4                              # evaluate every N grpo steps (-1 = disabled)
+    max_val_examples: int = 1024                        # max number of val examples per eval
+
+    # checkpointing
+    checkpoint_interval: int = 4                        # save a checkpoint every N grpo steps (-1 = disabled)
+
+    # logging
+    n_rollouts_to_log: int = 16                         # number of random rollouts to save to disk per grpo step (0 = disabled)
+
+    # wandb
+    wandb_project: str = "grpo"                         # wandb project name (empty = disabled)
+    wandb_run_name: str = "test"                        # wandb run name
+    wandb_tags: List[str] = field(default_factory=lambda: ["grpo"])
+    
+    # memory optimization flags
+    track_peak_memory: bool = True                      # log peak VRAM at key points in the training loop
+    use_gradient_checkpointing: bool = True             # trade compute for activation memory
+    use_vllm_sleep_mode: bool = True                    # offload vLLM weights+KV to CPU during training
+    use_bnb_adamw8bit: bool = True                      # use bitsandbytes AdamW8bit optimizer
+    
+@dataclass
+class VllmConfig:
+    gpu_memory_utilization: float = 0.2                 # fraction of GPU memory to reserve for vLLM
+    dtype: str = "bfloat16"                             # dtype for vLLM
+    enable_prefix_caching: bool = True                  # whether to enable prefix caching for vLLM
+    
+@dataclass
+class Config:
+    paths: PathConfig = field(default_factory=PathConfig)
+    vllm: VllmConfig = field(default_factory=VllmConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)

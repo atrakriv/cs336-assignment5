@@ -192,10 +192,6 @@ if __name__ == "__main__":
                     total_response_tokens += microbatch["response_mask"].sum().detach()
                     clip_fraction_accum += meta.get("clip_fraction", 0.0)
                     mean_ratio_accum += meta.get("mean_ratio", 0.0)
-                    out = 'loss_accum: {}, entropy_accum: {}, total_response_tokens: {}, clip_fraction_accum: {}, mean_ratio_accum: {}'.format(
-                        loss_accum, entropy_accum, total_response_tokens, clip_fraction_accum, mean_ratio_accum
-                    )
-                    print(tokenize_prompt_and_output)
                     del microbatch, cur_logps_result, cur_logps_idx, token_entropy, loss, old_logps_idx
 
                 avg_entropy = entropy_accum / total_response_tokens
@@ -205,6 +201,10 @@ if __name__ == "__main__":
 
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
+                out = 'loss_accum: {}, entropy_accum: {}, total_response_tokens: {}, clip_fraction_accum: {}, mean_ratio_accum: {}'.format(
+                        loss_accum, entropy_accum, total_response_tokens, clip_fraction_accum, mean_ratio_accum
+                    )
+                print(out)
 
                 # calculate mean rewards for the rollout batch
                 step_mean_format_reward = 0.0

@@ -44,10 +44,10 @@ class TrainingConfig:
     group_size: int = 8                                 # size of each group
     epochs_per_rollout_batch: int = 1                   # On-policy (off-policy if > 1)
     train_batch_size: int = 256                         # On-policy, batch size for training the policy
-    grad_acc_steps: int = 256                           # microbatch size is 2
+    grad_acc_steps: int = 128                           # microbatch size is 2
     loss_type: str = "grpo_no_clip"                     # "no_baseline", "reinforce_with_baseline", "grpo_no_clip", "grpo_clip"
     use_std_norma: bool = True                          # whether to use standard normalization for advantages
-    cliprange: float = 0.2                              # clip ratio
+    cliprange: float = 1.0                              # clip ratio ~~ initilaly set to 0.2 ~~
     max_grad_norm: float = 1.0                          # max gradient norm
     micro_batch_size: int = 2                           # number of samples that fit in
     norm_mode: str = "mean"                             # loss normalization mode: "mean", "constant", or "microbatch"
@@ -76,7 +76,7 @@ class TrainingConfig:
     
 @dataclass
 class VllmConfig:
-    gpu_memory_utilization: float = 0.2                 # fraction of GPU memory to reserve for vLLM
+    gpu_memory_utilization: float = 0.2                 # fraction of GPU memory to reserve for vLLM ~~ instruction says 0.85 ~~
     dtype: str = "bfloat16"                             # dtype for vLLM
     enable_prefix_caching: bool = True                  # whether to enable prefix caching for vLLM
     

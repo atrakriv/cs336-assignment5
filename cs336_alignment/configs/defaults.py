@@ -64,8 +64,8 @@ class TrainingConfig:
     n_rollouts_to_log: int = 16                         # number of random rollouts to save to disk per grpo step (0 = disabled)
 
     # wandb
-    wandb_project: str = "grpo"                         # wandb project name (empty = disabled)
-    wandb_run_name: str = "test"                        # wandb run name
+    wandb_project: str = "cs336-hw5"                    # wandb project name (empty = disabled)
+    wandb_run_name: str = "celestial-universe"          # wandb run name
     wandb_tags: List[str] = field(default_factory=lambda: ["grpo"])
     
     # memory optimization flags

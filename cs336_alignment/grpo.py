@@ -319,4 +319,7 @@ if __name__ == "__main__":
             print(f"[EVAL] grpo_step: {grpo_step:03d} | eval_step: {eval_step:03d} | n: {eval_metrics['n_examples']} | rew: {eval_metrics['mean_reward']:.4f} | ans_rew: {eval_metrics['mean_answer_reward']:.4f} | fmt_rew: {eval_metrics['mean_format_reward']:.4f}")
             eval_step += 1
 
+    if use_wandb:
+        wandb.finish()
+
     

@@ -7,12 +7,13 @@ from torch.optim import AdamW
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from vllm import SamplingParams
+import wandb
 
 from omegaconf import OmegaConf
 from configs.defaults import Config
 
 from drgrpo_grader import r1_zero_reward_fn
-from utils import dtype_mapping, load_dataset
+from utils import dtype_mapping, load_dataset, save_sample_rollouts
 from inference import init_vllm, load_policy_into_vllm_instance, evaluate_vllm
 from hw5 import tokenize_prompt_and_output, get_response_log_probs, grpo_microbatch_train_step, compute_group_normalized_rewards
 
@@ -38,6 +39,7 @@ if __name__ == "__main__":
     train_data_file = config.paths.train_data_file
     val_data_file = config.paths.val_data_file
     model_path = config.paths.model_path
+    output_dir = config.paths.output_dir
     device = config.training.device
     
     n_grpo_steps = config.training.n_grpo_steps
@@ -75,9 +77,22 @@ if __name__ == "__main__":
     stop = [str(s) for s in config.training.stop]
     include_stop_str_in_output = config.training.include_stop_str_in_output
     min_tokens = config.training.min_tokens
+    sampling_params = SamplingParams(
+        temperature = temperature,
+        top_p = top_p,
+        max_tokens = max_tokens,
+        stop = [str(s) for s in stop],
+        include_stop_str_in_output = include_stop_str_in_output,
+        min_tokens = min_tokens
+    )
 
+    n_rollouts_to_log = config.training.n_rollouts_to_log
     eval_interval = config.training.eval_interval
     max_val_examples = config.training.max_val_examples
+    use_wandb = bool(config.training.wandb_project)
+    wandb_project = config.training.wandb_project
+    wandb_run_name = config.training.wandb_run_name
+    wandb_tags = config.training.wandb_tags
     
     # ── Data ─────────────────────────────────────────────────────────────────
     
@@ -109,21 +124,48 @@ if __name__ == "__main__":
         use_fused = "fused" in inspect.signature(torch.optim.AdamW).parameters and config.training.device.startswith("cuda")
         optimizer = AdamW(model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay, eps=adam_eps, used=use_fused)
 
+    # ── Monitoring ────────────────────────────────────────────────────────
+    eval_step = 0
+            
+    ''' baseline evaluation'''
+    eval_metrics = evaluate_vllm(
+            vllm_model = vllm_model,
+            reward_fn = r1_zero_reward_fn,
+            val_dataset = val_dataset,
+            prompt_template = prompt_template,
+            sampling_params = sampling_params,
+            max_val_examples = max_val_examples,
+        )
+    
+    if use_wandb:
+
+        wandb.init(
+            project = config.training.wandb_project,
+            name = config.training.wandb_run_name or None,
+            config = OmegaConf.to_container(config, resolve=True),
+            tags = config.training.wandb_tags,
+        )
+        wandb.define_metric("grpo_step")
+        wandb.define_metric("eval_step")
+        wandb.define_metric("train/*", step_metric="grpo_step")
+        wandb.define_metric("eval/*", step_metric="eval_step")
+
+
+        wandb.log({
+            "eval/reward": eval_metrics['mean_reward'],
+            "eval/answer_reward": eval_metrics['mean_answer_reward'],
+            "eval/format_reward": eval_metrics['mean_format_reward'],
+            "eval_step": eval_step,
+            "grpo_step": 0,
+        })
+
+    print(f"[EVAL] grpo_step: {0:03d} | eval_step: {eval_step:03d} | n: {eval_metrics['n_examples']} | rew: {eval_metrics['mean_reward']:.4f} | ans_rew: {eval_metrics['mean_answer_reward']:.4f} | fmt_rew: {eval_metrics['mean_format_reward']:.4f}")    
+    eval_step += 1
+    
     # ── Training loop ────────────────────────────────────────────────────────
 
-    sampling_params = SamplingParams(
-        temperature = temperature,
-        top_p = top_p,
-        max_tokens = max_tokens,
-        stop = [str(s) for s in stop],
-        include_stop_str_in_output = include_stop_str_in_output,
-        min_tokens = min_tokens
-    )
-
-    # eval_metrics = evaluate_vllm()
-    
-    for grpo_step in range(1, n_grpo_steps+1):
-
+    for grpo_step in range(1, n_grpo_steps + 1):
+        
         batch = random.sample(train_dataset, n_prompts_per_rollout)     # a list of dics
         prompts = [prompt_template.replace("{question}", e['problem']) for e in batch for _ in range(group_size)]
         ground_truths = [e['answer'] for e in batch for _ in range(group_size)]
@@ -139,6 +181,10 @@ if __name__ == "__main__":
             advantage_eps,
             use_std_normalization,
         )
+
+        # save a random sample of rollouts to disk
+        if n_rollouts_to_log > 0 and (grpo_step % eval_interval == 0 or grpo_step == 1 or grpo_step == n_grpo_steps):
+            save_sample_rollouts(prompts, completions, ground_truths, advantages, rewards_meta, n_rollouts_to_log, grpo_step, output_dir)
 
         tokenized_train_data = tokenize_prompt_and_output(prompts, completions, tokenizer)
         input_ids, labels, completion_mask = tokenized_train_data['input_ids'], tokenized_train_data['labels'], tokenized_train_data['response_mask']
@@ -158,7 +204,7 @@ if __name__ == "__main__":
 
         # sleep vLLM to free its GPU memory (weights + KV cache) during training
         if use_vllm_sleep_mode: vllm_model.sleep(level=1)
-        
+
         torch.cuda.empty_cache() # to save memory
 
         model.train()
@@ -227,6 +273,21 @@ if __name__ == "__main__":
                 step_mean_answer_reward = rewards_meta["mean_answer_reward"]
                 step_mean_reward = rewards_meta["mean_reward"]
 
+                if use_wandb:
+                    wandb.log({
+                        "train/loss": loss_accum.item(),
+                        "train/entropy": avg_entropy.item(),
+                        "train/reward": step_mean_reward,
+                        "train/answer_reward": step_mean_answer_reward,
+                        "train/format_reward": step_mean_format_reward,
+                        "train/clip_fraction": avg_clip_fraction,
+                        "train/mean_ratio": avg_mean_ratio,
+                        "train/grad_norm": grad_norm.item(),
+                        "train/mean_response_length": mean_response_length,
+                        "grpo_step": grpo_step,
+                    })
+                print(f"[TRAIN] grpo_step: {grpo_step:03d} | loss: {loss_accum.item():.4f} | ent: {avg_entropy:.4f} | rew: {step_mean_reward:.4f} | ans_rew: {step_mean_answer_reward:.4f} | fmt_rew: {step_mean_format_reward:.4f} | clip: {avg_clip_fraction:.4f} | ratio: {avg_mean_ratio:.4f} | gnorm: {grad_norm:.4f} | lr: {config.training.learning_rate:.6f} | resp_len: {mean_response_length:.1f}")
+
                 torch.cuda.empty_cache()
 
 
@@ -237,8 +298,7 @@ if __name__ == "__main__":
         load_policy_into_vllm_instance(model, vllm_model)
 
         # intermediate evaluation on a subset of val_dataset
-        if config.training.eval_interval > 0 and (grpo_step % eval_interval == 0 or grpo_step == n_grpo_steps):
-            eval_step += 1
+        if eval_interval > 0 and (grpo_step % eval_interval == 0 or grpo_step == n_grpo_steps):
             eval_metrics = evaluate_vllm(
                 vllm_model = vllm_model,
                 reward_fn = r1_zero_reward_fn,
@@ -247,5 +307,16 @@ if __name__ == "__main__":
                 sampling_params = sampling_params,
                 max_val_examples = max_val_examples,
             )
+            
+            if use_wandb:
+                wandb.log({
+                    "eval/reward": eval_metrics['mean_reward'],
+                    "eval/answer_reward": eval_metrics['mean_answer_reward'],
+                    "eval/format_reward": eval_metrics['mean_format_reward'],
+                    "eval_step": eval_step,
+                    "grpo_step": grpo_step,
+                })
+            print(f"[EVAL] grpo_step: {grpo_step:03d} | eval_step: {eval_step:03d} | n: {eval_metrics['n_examples']} | rew: {eval_metrics['mean_reward']:.4f} | ans_rew: {eval_metrics['mean_answer_reward']:.4f} | fmt_rew: {eval_metrics['mean_format_reward']:.4f}")
+            eval_step += 1
 
     

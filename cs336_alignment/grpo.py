@@ -51,6 +51,7 @@ if __name__ == "__main__":
 
     use_std_normalization = config.training.use_std_norm
     advantage_eps = config.training.advantage_eps
+    use_gradient_checkpointing = config.training.use_gradient_checkpointing
     loss_type = config.training.loss_type
     cliprange = config.training.cliprange
     norm_mode = config.training.norm_mode
@@ -90,13 +91,23 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        dtype=dtype_mapping[dtype],
-        attn_implementation=config.training.attention_type,
+        torch_dtype=dtype_mapping[dtype],
+        attn_implementation = config.training.attention_type,
         device_map=device
     )
+    if use_gradient_checkpointing:
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        model.config.use_cache = False
+
     vllm_model = init_vllm(seed, model_path, gpu_memory_utilization, dtype, enable_prefix_caching, use_vllm_sleep_mode)
-    
-    optimizer = AdamW(model.parameters(), lr = lr, betas = betas, weight_decay = weight_decay, eps = adam_eps)
+
+    if config.training.use_bnb_adamw8bit:
+        import bitsandbytes as bnb
+        optimizer = bnb.optim.AdamW8bit(model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay, eps=adam_eps)
+    else:
+        import inspect
+        use_fused = "fused" in inspect.signature(torch.optim.AdamW).parameters and config.training.device.startswith("cuda")
+        optimizer = AdamW(model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay, eps=adam_eps, used=use_fused)
 
     # ── Training loop ────────────────────────────────────────────────────────
 
@@ -139,9 +150,14 @@ if __name__ == "__main__":
             input_ids_idx, labels_idx = map(lambda x: x[idx : idx + micro_batch_size].to(device), [input_ids, labels])
             with torch.no_grad():
                 with torch.autocast(device_type=device.split(":")[0]):
-                    logps = get_response_log_probs(model, input_ids, labels)["log_probs"]
+                    logps = get_response_log_probs(model, input_ids_idx, labels_idx)["log_probs"]
                 old_logps.append(logps)
         old_logps = torch.cat(old_logps, dim=0).cpu() # offload to cpu
+        # old_logps_mem = old_logps.element_size() * old_logps.nelement() / 1024 ** 2
+        del logps, input_ids_idx, labels_idx, # old_logps_mem 
+
+        # sleep vLLM to free its GPU memory (weights + KV cache) during training
+        if use_vllm_sleep_mode: vllm_model.sleep(level=1)
         
         torch.cuda.empty_cache() # to save memory
 
@@ -207,21 +223,15 @@ if __name__ == "__main__":
                 print(out)
 
                 # calculate mean rewards for the rollout batch
-                step_mean_format_reward = 0.0
-                step_mean_answer_reward = 0.0
-                step_mean_reward = 0.0
-                rewards_len = len(rewards_meta['rewards'])
-                for r in rewards_meta['rewards']:
-                    step_mean_format_reward += r["format_reward"] / rewards_len
-                    step_mean_answer_reward += r["answer_reward"] / rewards_len
-                    step_mean_reward += r["reward"] / rewards_len
+                step_mean_format_reward = rewards_meta["mean_format_reward"]
+                step_mean_answer_reward = rewards_meta["mean_answer_reward"]
+                step_mean_reward = rewards_meta["mean_reward"]
 
                 torch.cuda.empty_cache()
 
 
         # wake vLLM before loading updated policy weights and next generation step
-        if config.training.use_vllm_sleep_mode:
-            vllm_model.wake_up()
+        if config.training.use_vllm_sleep_mode: vllm_model.wake_up()
 
         # load the model weights
         load_policy_into_vllm_instance(model, vllm_model)

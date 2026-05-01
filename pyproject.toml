@@ -15,6 +15,7 @@ dependencies = [
     "omegaconf", 
     "pytest>=8.3.5",
     "torch",
+    "bitsandbytes",
     "tqdm>=4.67.1",
     "transformers>=4.50.0",
     "typer>=0.15.4",

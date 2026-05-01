@@ -5,11 +5,11 @@ from typing import List
 
 @dataclass
 class PathConfig:
-    train_data_file: str = "data/grpo/train.json"                         # jsonl file containing the training data
-    val_data_file: str = "data/grpo/validation.jsonl"                     # jsonl file containing the validation data
-    prompt_template_file: str = "cs336_alignment/prompts/r1_zero.prompt"  # prompt template file
-    model_path: str = "Qwen2.5-Math-1.5B"                                 # path to the qwen2.5-math-1.5b model checkpoint
-    output_dir: str = "output/grpo"                                       # directory to save the results
+    train_data_file: str = "../data/grpo/train.jsonl"       # jsonl file containing the training data
+    val_data_file: str = "../data/grpo/validation.jsonl"    # jsonl file containing the validation data
+    prompt_template_file: str = "prompts/r1_zero.prompt"    # prompt template file
+    model_path: str = "Qwen/Qwen2.5-Math-1.5B"              # path to the qwen2.5-math-1.5b model checkpoint
+    output_dir: str = "output/grpo"                         # directory to save the results
 
 @dataclass
 class TrainingConfig:
@@ -45,8 +45,8 @@ class TrainingConfig:
     epochs_per_rollout_batch: int = 1                   # On-policy (off-policy if > 1)
     train_batch_size: int = 256                         # On-policy, batch size for training the policy
     grad_acc_steps: int = 128                           # microbatch size is 2
-    loss_type: str = "grpo_no_clip"                     # "no_baseline", "reinforce_with_baseline", "grpo_no_clip", "grpo_clip"
-    use_std_norma: bool = True                          # whether to use standard normalization for advantages
+    loss_type: str = "no_baseline"                      # "no_baseline", "reinforce_with_baseline", "grpo_no_clip", "grpo_clip"
+    use_std_norm: bool = True                           # whether to use standard normalization for advantages
     cliprange: float = 1.0                              # clip ratio ~~ initilaly set to 0.2 ~~
     max_grad_norm: float = 1.0                          # max gradient norm
     micro_batch_size: int = 2                           # number of samples that fit in

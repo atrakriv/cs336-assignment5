@@ -1,3 +1,7 @@
+
+# atak
+wandb/
+
 *.bin
 models/
 data/

@@ -30,6 +30,7 @@ def init_vllm(seed, model_path, gpu_memory_utilization, dtype, enable_prefix_cac
         "dtype": dtype_mapping[dtype],
         "enable_prefix_caching": enable_prefix_caching,
         "enable_sleep_mode": use_vllm_sleep_mode,
+        # "enforce_eager": True,
     }
     return LLM(**vllm_init_params)
 

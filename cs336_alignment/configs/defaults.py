@@ -9,7 +9,7 @@ class PathConfig:
     val_data_file: str = "../data/grpo/validation.jsonl"    # jsonl file containing the validation data
     prompt_template_file: str = "prompts/r1_zero.prompt"    # prompt template file
     model_path: str = "Qwen/Qwen2.5-Math-1.5B"              # path to the qwen2.5-math-1.5b model checkpoint
-    output_dir: str = "output/grpo"                         # directory to save the results
+    output_dir: str = "outputs/grpo"                         # directory to save the results
 
 @dataclass
 class TrainingConfig:

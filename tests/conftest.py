@@ -221,7 +221,7 @@ def tokenizer(model_id):
 
 @pytest.fixture
 def model(model_id):
-    return AutoModelForCausalLM.from_pretrained(model_id)
+    return AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float32)
 
 
 @pytest.fixture

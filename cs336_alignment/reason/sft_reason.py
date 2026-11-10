@@ -8,7 +8,7 @@ from torch.optim import AdamW
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-from hw5 import tokenize_prompt_and_output, get_response_log_probs, sft_microbatch_train_step
+from cs336_alignment.reason.hw5 import tokenize_prompt_and_output, get_response_log_probs, sft_microbatch_train_step
 
 class SFTDataLoader:
     def __init__(self, data_file, prmpt_file, batch_size, seed=42):
@@ -46,8 +46,8 @@ if __name__ == "__main__":
 
     # ── Hyperparameters ──────────────────────────────────────────────────────
     
-    data_file = 'data/sft/sft_gpt-oss-120b_filtered.jsonl'
-    prmpt_file = 'cs336_alignment/prompts/r1_zero.prompt'
+    data_file = 'cs336_alignment/reason/data/sft/sft_gpt-oss-120b_filtered.jsonl'
+    prmpt_file = 'cs336_alignment/reason/prompts/r1_zero.prompt'
     model_name = 'gpt2'
     batch_size = 64
     micro_batch_size = 2

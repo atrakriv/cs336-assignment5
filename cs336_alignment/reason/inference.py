@@ -6,7 +6,7 @@ from transformers import PreTrainedModel
 from vllm import LLM, SamplingParams
 from vllm.model_executor import set_random_seed as vllm_set_random_seed
 
-from utils import dtype_mapping
+from cs336_alignment.reason.utils import dtype_mapping
 
 # -------------------------------------------------------------#
 # functions to initialize the vLLM model and load the policy into the vLLM model during training

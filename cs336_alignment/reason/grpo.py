@@ -10,12 +10,12 @@ from vllm import SamplingParams
 import wandb
 
 from omegaconf import OmegaConf
-from configs.defaults import Config
+from cs336_alignment.reason.configs.defaults import Config
 
-from drgrpo_grader import r1_zero_reward_fn
-from utils import dtype_mapping, load_dataset, save_sample_rollouts
-from inference import init_vllm, load_policy_into_vllm_instance, evaluate_vllm
-from hw5 import tokenize_prompt_and_output, get_response_log_probs, grpo_microbatch_train_step, compute_group_normalized_rewards
+from cs336_alignment.reason.drgrpo_grader import r1_zero_reward_fn
+from cs336_alignment.reason.utils import dtype_mapping, load_dataset, save_sample_rollouts
+from cs336_alignment.reason.inference import init_vllm, load_policy_into_vllm_instance, evaluate_vllm
+from cs336_alignment.reason.hw5 import tokenize_prompt_and_output, get_response_log_probs, grpo_microbatch_train_step, compute_group_normalized_rewards
 
 
 if __name__ == "__main__":

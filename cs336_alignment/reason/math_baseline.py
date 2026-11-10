@@ -6,7 +6,7 @@ from datasets import load_dataset
 
 from vllm import LLM, SamplingParams
 
-from cs336_alignment.drgrpo_grader import r1_zero_reward_fn
+from cs336_alignment.reason.drgrpo_grader import r1_zero_reward_fn
 
 
 def evaluate_vllm(
@@ -68,7 +68,7 @@ def evaluate_vllm(
 
 if __name__ == "__main__":
 
-    r1_zero_template = Path("cs336_alignment/prompts/r1_zero.prompt").read_text()
+    r1_zero_template = Path("cs336_alignment/reason/prompts/r1_zero.prompt").read_text()
     dataset = 'nlile/hendrycks-MATH-benchmark'
     ds = load_dataset(dataset, split="test")
     df = ds.to_pandas()
@@ -83,4 +83,4 @@ if __name__ == "__main__":
     eval_sampling_params.stop = ["</answer>"]
     eval_sampling_params.include_stop_str_in_output = True
 
-    results = evaluate_vllm(vllm_model, r1_zero_reward_fn, prompts, ground_truths, eval_sampling_params, save_path="outputs/baseline_eval.txt")
+    results = evaluate_vllm(vllm_model, r1_zero_reward_fn, prompts, ground_truths, eval_sampling_params, save_path="cs336_alignment/reason/outputs/baseline_eval.txt")

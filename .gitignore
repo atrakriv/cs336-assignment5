@@ -1,6 +1,7 @@
 
 # atak
 wandb/
+cs336_alignment/reason/outputs/rollouts/
 
 *.bin
 models/

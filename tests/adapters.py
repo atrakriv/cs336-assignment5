@@ -8,9 +8,9 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 
-from cs336_alignment.hw5 import tokenize_prompt_and_output, compute_entropy, get_response_log_probs, masked_normalize, sft_microbatch_train_step
-from cs336_alignment.hw5 import compute_group_normalized_rewards, compute_naive_policy_gradient_loss, compute_grpo_clip_loss, compute_policy_gradient_loss, masked_mean, grpo_microbatch_train_step
-
+from cs336_alignment.reason.hw5 import tokenize_prompt_and_output, compute_entropy, get_response_log_probs, masked_normalize, sft_microbatch_train_step
+from cs336_alignment.reason.hw5 import compute_group_normalized_rewards, compute_naive_policy_gradient_loss, compute_grpo_clip_loss, compute_policy_gradient_loss, masked_mean, grpo_microbatch_train_step
+from cs336_alignment.instruct.hw5 import mmlu_baseline, per_instance_dpo_loss
 
 def run_tokenize_prompt_and_output(
     prompt_strs: list[str],
@@ -355,7 +355,7 @@ def run_parse_mmlu_response(
         str (one of "A", "B", "C", or "D") if the model output can be parsed into a prediction,
         else None.
     """
-    raise NotImplementedError
+    return mmlu_baseline(model_output)
 
 
 def run_parse_gsm8k_response(
@@ -407,4 +407,5 @@ def run_compute_per_instance_dpo_loss(
     Returns:
         torch.Tensor with the DPO loss for this example.
     """
-    raise NotImplementedError
+    # return per_instance_dpo_loss(lm, lm_ref, tokenizer, beta, prompt, response_chosen, response_rejected)
+    return per_instance_dpo_loss(lm, lm_ref, tokenizer, beta, prompt, response_chosen, response_rejected)

@@ -1,12 +1,14 @@
 from pathlib import Path
 
 import json
+import os
 import numpy as np
 
 import torch
 from torch.optim import AdamW
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import LoraConfig, get_peft_model
 
 from cs336_alignment.reason.hw5 import tokenize_prompt_and_output, get_response_log_probs, sft_microbatch_train_step
 
@@ -52,7 +54,13 @@ if __name__ == "__main__":
     batch_size = 64
     micro_batch_size = 2
 
-    max_lr = 0.001
+    # LoRA
+    use_lora = True
+    lora_r = 16
+    lora_alpha = 32
+    lora_dropout = 0.05
+    lora_target_modules = ["c_attn", "c_proj"]  # GPT-2 attention (+ MLP/attn output proj)
+    max_lr = 2e-4 if use_lora else 0.001  # LoRA typically tolerates a higher LR than full FT; 1e-3 is high for full FT
     betas = (0.9, 0.999)
     grad_norm_clip = 1.0
 
@@ -62,11 +70,29 @@ if __name__ == "__main__":
     
     # ── Model + Tokenizer + Optimizer ────────────────────────────────────────
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    optimizer =  AdamW (model.parameters(), lr=max_lr, betas=betas, eps=1e-08, weight_decay=0.01)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+    max_len = model.config.n_positions  # 1024 for GPT-2
+
+    if use_lora:
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+            target_modules=lora_target_modules,
+            fan_in_fan_out=True,  # GPT-2 uses Conv1D (transposed weights)
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
+
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = AdamW(trainable_params, lr=max_lr, betas=betas, eps=1e-08, weight_decay=0.01)
     
     # ── Training loop ────────────────────────────────────────────────────────
     steps = len(train_data_loader.data_list)//batch_size
+    if os.environ.get('MAX_STEPS'): steps = min(steps, int(os.environ['MAX_STEPS']))  # quick smoke test
     grad_acc_steps =  batch_size //micro_batch_size
     for step in range(1, steps+1):
         optimizer.zero_grad() #optimizer.zero_grad(set_to_none=True)
@@ -76,17 +102,15 @@ if __name__ == "__main__":
             prompts = [e['prompt'] for e in batch]
             completions  = [e['completion'] for e in batch]
             tokenized_batch = tokenize_prompt_and_output(prompts, completions, tokenizer)
-            max_len = model.config.n_positions  # 1024 for GPT-2
             for key in tokenized_batch: tokenized_batch[key] = tokenized_batch[key][:, :max_len]
-            input_ids, labels,  completion_mask = tokenized_batch["input_ids"], tokenized_batch["labels"], tokenized_batch["response_mask"]
-            # labels, response_mask = tokenized_batch["input_ids"].to(device), tokenized_batch["labels"].to(device), tokenized_batch["response_mask"].to(device)
+            input_ids, labels, completion_mask = (tokenized_batch[k].to(device) for k in ("input_ids", "labels", "response_mask"))
             response_log_probs = get_response_log_probs(model, input_ids, labels, True)
             normalize_constant = completion_mask.sum(dim=1).clamp(min=1)
             loss, loss_metrics = sft_microbatch_train_step(response_log_probs["log_probs"], completion_mask, grad_acc_steps, normalize_constant=normalize_constant)
             loss_accum += loss.detach()
             print(loss)
         print('***', loss_accum )
-        norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+        norm = torch.nn.utils.clip_grad_norm_(trainable_params, grad_norm_clip)
         optimizer.step()
 
 

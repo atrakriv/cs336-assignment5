@@ -19,6 +19,7 @@ def tokenize_prompt_and_output(prompts, completions, tokenizer):
     batch_size = len(prompt_completions)
     pad_id = tokenizer.eos_token_id
 
+    ''' sol 1: create padded tensors with size max_len - 1'''
     input_ids = torch.full((batch_size, seq_len), pad_id, dtype=torch.long)
     labels = torch.full((batch_size, seq_len), pad_id, dtype=torch.long)
     response_mask = torch.full((batch_size, seq_len), False, dtype=torch.bool)
@@ -28,6 +29,17 @@ def tokenize_prompt_and_output(prompts, completions, tokenizer):
         input_ids[idx, :total_lens[idx]-1] = t[:-1]
         labels[idx, :total_lens[idx]-1] = t[1:]
         response_mask[idx, prompt_lens[idx]-1:total_lens[idx]-1] = True
+
+    # ''' sol 2: create a padded tensor with size max_len'''
+    # prmpt_compt_padded = torch.full((batch_size, max(total_lens)), pad_id )
+    # response_mask = torch.full((batch_size, max(total_lens)), 0)
+    # for i in range(batch_size):
+    #     prmpt_compt_padded[i, :prompt_lens[i]] = torch.tensor(prompt_tokens[i])
+    #     prmpt_compt_padded[i, prompt_lens[i]: total_lens[i]] = torch.tensor(completion_tokens[i])
+    #     response_mask[i, prompt_lens[i]: total_lens[i]] = 1
+    # input_ids = prmpt_compt_padded[:, :-1]
+    # labels = prmpt_compt_padded[:, 1:]
+    # response_mask = response_mask[:, 1:]
 
     return {
         "input_ids": input_ids,

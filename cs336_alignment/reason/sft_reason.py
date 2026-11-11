@@ -8,6 +8,7 @@ from torch.optim import AdamW
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+from cs336_alignment.reason.lora import apply_lora, lora_parameters
 from cs336_alignment.reason.hw5 import tokenize_prompt_and_output, get_response_log_probs, sft_microbatch_train_step
 
 class SFTDataLoader:
@@ -56,6 +57,10 @@ if __name__ == "__main__":
     betas = (0.9, 0.999)
     grad_norm_clip = 1.0
 
+    use_lora = True
+    lora_r, lora_alpha, lora_dropout = 8, 16, 0.05
+    lora_targets = ("c_attn", "c_proj", "c_fc")  # GPT-2 module names
+
     # ── Data ─────────────────────────────────────────────────────────────────
     train_data_loader = SFTDataLoader(data_file, prmpt_file, micro_batch_size)
     
@@ -63,7 +68,13 @@ if __name__ == "__main__":
     # ── Model + Tokenizer + Optimizer ────────────────────────────────────────
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
-    optimizer =  AdamW (model.parameters(), lr=max_lr, betas=betas, eps=1e-08, weight_decay=0.01)
+    if use_lora:
+        apply_lora(model, lora_targets, r=lora_r, alpha=lora_alpha, dropout=lora_dropout)
+        trainable_params = lora_parameters(model)
+        print(f"LoRA trainable params: {sum(p.numel() for p in trainable_params):,}")
+    else:
+        trainable_params = list(model.parameters())
+    optimizer =  AdamW (trainable_params, lr=max_lr, betas=betas, eps=1e-08, weight_decay=0.01)
     
     # ── Training loop ────────────────────────────────────────────────────────
     steps = len(train_data_loader.data_list)//batch_size
@@ -86,7 +97,7 @@ if __name__ == "__main__":
             loss_accum += loss.detach()
             print(loss)
         print('***', loss_accum )
-        norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+        norm = torch.nn.utils.clip_grad_norm_(trainable_params, grad_norm_clip)
         optimizer.step()
 
 
